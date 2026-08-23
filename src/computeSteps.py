@@ -319,7 +319,8 @@ def compute(display_graph=1, without_mean=0):
     x_data, y_data, z_data, r_data, timestamps = pull_data(DATA_PATH, 'Accelerometer')
 
     #filter
-    r = lowpass_filter(r_data, cutoff, fs, order)
+    # r = lowpass_filter(r_data, cutoff, fs, order)
+    r = r_data # test without the lowpass filter
     
     #mean
     if without_mean == 1:
