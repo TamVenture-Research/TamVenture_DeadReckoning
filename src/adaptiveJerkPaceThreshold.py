@@ -3,71 +3,55 @@ import numpy as np
 GRAVITY = 9.81
 
 
-def adaptive_step_jerk_threshold(data, timestamps, zero=GRAVITY):
-    last_state = None
-    current_state = None
-    last_peak = None
-    last_trough = None
-
-    peak_troughs = []
-
-    jerk_mean = 1
-    alpha = 0.125
-
-    jerk_dev = 0.125
-    beta = 0.25
-
-    # Graphing Purpose Array
-    # 0 - timestamp
-    # 1 - Jerk Mean
-    # 2 - Jerk Standard Deviation
-    meta = []
-
-    for i, datum in enumerate(data):
-
-        if datum < zero and last_state != None:
+class AdaptiveJerkPaceThreshold:
+    def __init__(self, zero = GRAVITY):
+        self.zero = zero
+        self.last_state = None
+        self.last_trough = None
+        self.last_peak = None
+        self.peak_troughs = [] # accepted troughs
+        self.meta = []
+        self.jerk_mean = 1
+        self.alpha = 0.125
+        self.jerk_dev = 0.125
+        self.beta = 0.25
+    def detect(self, timestamp, datum):
+        accept = False
+        current_state = None
+        if datum < self.zero:
             current_state = 'trough'
-            if last_trough == None or datum < last_trough["val"]:
-                last_trough = {
-                    "ts": timestamps[i],
-                    "val": data[i],
-                    "min_max": "min"
-                }
-        elif datum > zero:
+            if self.last_trough is None or datum < self.last_trough["val"]:
+                self.last_trough = {"val": datum, "ts": timestamp, "min_max": "min"}
+        elif datum >= self.zero:
             current_state = 'peak'
-            if last_peak == None or datum > last_peak["val"]:
-                last_peak = {
-                    "ts": timestamps[i],
-                    "val": data[i],
-                    "min_max": "max"
-                }
+            if self.last_peak is None or datum > self.last_peak["val"]:
+                self.last_peak = {"val": datum, "ts": timestamp, "min_max": "max"}
 
-        if current_state != last_state:
-            # Zero Crossing
-            # When coming out of trough assess the "Dip"
-            if last_state == 'trough':
+        # a crossing has been detected!!
+        if current_state != self.last_state:
+            # if we go from trough to peak
+            if self.last_state == 'trough':
+                if self.last_peak:
+                    jerk = self.last_peak['val'] - self.last_trough['val'] # look at the difference
 
-                if last_peak:
+                    # if the difference is large enough then record the trough
+                    if jerk > self.jerk_mean - 4 * self.jerk_dev:
+                        self.jerk_mean = jerk * self.alpha + self.jerk_mean * (1- self.alpha)
+                        self.jerk_dev = abs(jerk) * self.beta + jerk * (1 - self.beta)
 
-                    jerk = last_peak['val'] - last_trough['val']
+                        self.meta.append([timestamp, self.jerk_mean, self.jerk_dev])
+                        self.peak_troughs.append(self.last_trough)
+                        self.last_trough = None
+                        accept = True
+            # if we go from peak to trough
+            elif self.last_state == 'peak':
+                self.last_peak = None
+        self.last_state = current_state
 
-                    if jerk > jerk_mean - 4 * jerk_dev:
-                        jerk_dev = abs(jerk_mean - jerk) * beta + jerk_dev * (1 - beta)
-                        jerk_mean = jerk * alpha + jerk_mean * (1 - alpha)
+        return accept
+def adaptive_step_jerk_threshold(data, timestamps, zero=GRAVITY):
+    asjt = AdaptiveJerkPaceThreshold(zero)
+    for timestamp, datum in zip(timestamps, data):
+        accept = asjt.detect(timestamp, datum)
 
-                        peak_troughs.append(last_trough)
-
-                        meta.append([
-                            timestamps[i],
-                            jerk_mean,
-                            jerk_dev
-                        ])
-
-                last_trough = None
-            elif last_state == 'peak':
-                # peak_troughs.append(last_peak)
-                last_peak = None
-
-        last_state = current_state
-
-    return np.array(peak_troughs), np.array(meta)
+    return asjt.peak_troughs, asjt.meta
