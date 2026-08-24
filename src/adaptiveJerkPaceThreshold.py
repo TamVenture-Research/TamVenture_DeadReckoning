@@ -54,4 +54,4 @@ def adaptive_step_jerk_threshold(data, timestamps, zero=GRAVITY):
     for timestamp, datum in zip(timestamps, data):
         accept = asjt.detect(timestamp, datum)
 
-    return asjt.peak_troughs, asjt.meta
+    return np.array(asjt.peak_troughs), asjt.meta
